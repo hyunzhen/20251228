@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>공성전 관람 시스템 프로토타입</title>
+  <style>
+    :root{
+      --ui-green:#00ff91;
+      --txt:#eaf3ef;
+      --muted:#b7c6bf;
+      --shadow: 0 12px 28px rgba(0,0,0,.35);
+      --panel2: rgba(0,0,0,.35);
+      --stroke2: rgba(255,255,255,.10);
+      --flash: rgba(0,255,145,.95);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:#0b0f0d;
+      color:var(--txt);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif;
+    }
+
+    .page{
+      max-width: 1440px;
+      margin: 18px auto 28px;
+      padding: 0 14px;
+    }
+    .stage-title{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin: 6px 2px 10px;
+      color:#dff3ea;
+      opacity:.95;
+    }
+    .stage-title .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      background: rgba(0,168,107,.12);
+      border:1px solid rgba(0,168,107,.28);
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing:.2px;
+    }
+
+    /* ====== Game frame ====== */
+    .game-frame{
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      border-radius: 16px;
+      overflow:hidden;
+      box-shadow: var(--shadow);
+      background:#000;
+      user-select:none;
+    }
+    .bg{ position:absolute; inset:0; background:#000; }
+    .bg img{
+      width:100%; height:100%;
+      object-fit: contain;
+      object-position: center;
+      display:block;
+      filter: saturate(.95) contrast(1.03);
+      transform:none;
+    }
+    .vignette{
+      position:absolute; inset:0;
+      background:
+        radial-gradient(1200px 700px at 20% 20%, rgba(0,0,0,.12), rgba(0,0,0,.45) 72%),
+        linear-gradient(to bottom, rgba(0,0,0,.15), rgba(0,0,0,.32));
+      pointer-events:none;
+    }
+
+    .hud{ position:absolute; inset:0; pointer-events:none; }
+
+    /* ====== Right-side stack ====== */
+    .right-stack{
+      position:absolute;
+      top: 20px;
+      right: 18px;
+      width: 260px;
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+      pointer-events:none;
+    }
+
+    .widget{
+      border-radius: 14px;
+      overflow:hidden;
+      background: var(--panel2);
+      border: 1px solid var(--stroke2);
+      box-shadow: 0 14px 26px rgba(0,0,0,.38);
+      pointer-events:auto;
+      position:relative;
+    }
+
+    /* Info widget image */
+    .info-img{
+      width: 100%;
+      height: auto;
+      display:block;
+      cursor:pointer;
+      transition: filter .15s ease;
+    }
+    .info-img:hover{ filter: brightness(1.06); }
+
+    /* Camera widget */
+    .camera-wrap{ width: 260px; }
+    .camera-stage{
+      position:relative;
+      width:100%;
+      aspect-ratio: 260 / 560; /* JS에서 실제 비율로 동기화 */
+      background: rgba(0,0,0,.18);
+    }
+    .camera-stage img{
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit: contain;
+      display:block;
+    }
+
+    /* Hotspots */
+    .hotspot{
+      position:absolute;
+      pointer-events:auto;
+      cursor:pointer;
+      background: rgba(0,0,0,0);
+      border-radius: 10px;
+      z-index: 60;
+    }
+    .hotspot:active{ transform: translateY(1px); }
+
+    /* ✅ 빨간색(자동 토글) 영역: 이미지 상단 '자동' 토글 */
+    .hs-auto{
+      top: 2.2%;
+      right: 17%;
+      width: 28%;
+      height: 11.5%;
+      border-radius: 999px;
+    }
+
+    /* ✅ 파란색(카메라 버튼) 영역: 우측 상단 카메라 아이콘 버튼 */
+    .hs-camera{
+      top: 2.2%;
+      right: 1.8%;
+      width: 14%;
+      height: 11.5%;
+      border-radius: 10px;
+    }
+
+    /* Points layer (cam3에서는 숨김) */
+    .points-layer{
+      position:absolute; inset:0;
+      pointer-events:none;
+      z-index: 30;
+    }
+    .pt{
+      position:absolute;
+      width: 14px; height: 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 0 0 3px rgba(0,0,0,.42);
+      pointer-events:auto;
+      cursor:pointer;
+      transition: transform .08s ease;
+    }
+    .pt:hover{ transform: scale(1.06); }
+    .pt.flash{
+      background: var(--flash);
+      box-shadow: 0 0 0 3px rgba(0,0,0,.42), 0 0 14px rgba(0,255,145,.45);
+    }
+
+    /* 포인트 위치(대략) */
+    .p1 { left: 34%; top: 28%; }
+    .p2 { left: 46%; top: 30%; }
+    .p3 { left: 58%; top: 33%; }
+    .p4 { left: 67%; top: 40%; }
+    .p5 { left: 54%; top: 42%; }
+    .p6 { left: 40%; top: 44%; }
+    .p7 { left: 30%; top: 52%; }
+    .p8 { left: 44%; top: 54%; }
+    .p9 { left: 58%; top: 56%; }
+    .p10{ left: 69%; top: 60%; }
+    .p11{ left: 52%; top: 66%; }
+    .p12{ left: 40%; top: 70%; }
+    .p13{ left: 47%; top: 78%; }
+    .p14{ left: 50%; top: 86%; }
+
+    /* Toast */
+    .toast{
+      position:absolute;
+      left: 18px;
+      bottom: 18px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.12);
+      color: rgba(255,255,255,.86);
+      font-size: 12px;
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events:none;
+      transition: opacity .18s ease, transform .18s ease;
+      backdrop-filter: blur(3px);
+      box-shadow: 0 14px 28px rgba(0,0,0,.35);
+    }
+    .toast.show{ opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="stage-title">
+      <div class="badge">👁️ 공성전 관람 시스템 프로토타입</div>
+    </div>
+
+    <div class="game-frame">
+      <div class="bg">
+        <img id="bgImg"
+          src="https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/background_01.png"
+          alt="battle-bg">
+      </div>
+      <div class="vignette"></div>
+
+      <div class="hud">
+        <div class="right-stack">
+          <!-- A: 공성전 정보 표시 -->
+          <div class="widget" aria-label="siege-info">
+            <img
+              id="infoImg"
+              class="info-img"
+              src="https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/info_01.png"
+              alt="siege-info"
+              title="클릭: 정보 표시 ON/OFF"
+            />
+          </div>
+
+          <!-- B: 카메라 시점 전환 -->
+          <div class="widget camera-wrap" aria-label="camera-switch">
+            <div class="camera-stage" id="cameraStage">
+              <img id="cameraImg"
+                   src="https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/camera_01.png"
+                   alt="camera-ui"/>
+
+              <!-- ✅ 빨간색: 자동 토글 -->
+              <div class="hotspot hs-auto" id="btnAutoToggle" title="자동 토글"></div>
+              <!-- ✅ 파란색: 카메라 버튼 -->
+              <div class="hotspot hs-camera" id="btnCameraIcon" title="카메라 버튼"></div>
+
+              <div class="points-layer" id="pointsLayer">
+                <div class="pt p1"  data-pt="1"></div>
+                <div class="pt p2"  data-pt="2"></div>
+                <div class="pt p3"  data-pt="3"></div>
+                <div class="pt p4"  data-pt="4"></div>
+                <div class="pt p5"  data-pt="5"></div>
+                <div class="pt p6"  data-pt="6"></div>
+                <div class="pt p7"  data-pt="7"></div>
+                <div class="pt p8"  data-pt="8"></div>
+                <div class="pt p9"  data-pt="9"></div>
+                <div class="pt p10" data-pt="10"></div>
+                <div class="pt p11" data-pt="11"></div>
+                <div class="pt p12" data-pt="12"></div>
+                <div class="pt p13" data-pt="13"></div>
+                <div class="pt p14" data-pt="14"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const RES = {
+      bg: [
+        "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/background_01.png",
+        "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/background_02.png",
+        "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/background_03.png",
+        "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/background_04.png",
+        "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/background_05.png",
+      ],
+      info1: "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/info_01.png",
+      info2: "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/info_02.png",
+      cam1:  "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/camera_01.png",
+      cam2:  "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/camera_02.png",
+      cam3:  "https://raw.githubusercontent.com/hyunzhen/20251228/refs/heads/main/camera_03.png",
+    };
+
+    const els = {
+      bgImg: document.getElementById("bgImg"),
+      infoImg: document.getElementById("infoImg"),
+      cameraImg: document.getElementById("cameraImg"),
+      cameraStage: document.getElementById("cameraStage"),
+      pointsLayer: document.getElementById("pointsLayer"),
+      btnAutoToggle: document.getElementById("btnAutoToggle"),
+      btnCameraIcon: document.getElementById("btnCameraIcon"),
+      toast: document.getElementById("toast"),
+    };
+
+    // ✅ 요구사항 반영 상태머신
+    // - baseState: 1 또는 2 (cam1/cam2)
+    // - isCam3Overlay: cam3(오버레이) 상태인지 여부
+    // - autoOn: baseState가 2일 때만 true (빨간 토글로 on/off)
+    const state = {
+      infoOn: false,
+      baseState: 1,        // 1 => cam1, 2 => cam2
+      isCam3Overlay: false,
+      autoOn: false,
+
+      bgIndex: 0,
+      autoTimer: null,
+
+      // manual background sequence: 0->1->2->3->4->0...
+      manualSeqIndex: 0,
+    };
+
+    function preload(urls){
+      urls.forEach(u => { const img = new Image(); img.src = u; });
+    }
+    preload([...RES.bg, RES.info1, RES.info2, RES.cam1, RES.cam2, RES.cam3]);
+
+    function showToast(text){
+      els.toast.textContent = text;
+      els.toast.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => els.toast.classList.remove("show"), 900);
+    }
+
+    function setBgByIndex(i){
+      state.bgIndex = (i + RES.bg.length) % RES.bg.length;
+      els.bgImg.src = RES.bg[state.bgIndex];
+    }
+    function nextBg(){ setBgByIndex(state.bgIndex + 1); }
+
+    function stopAuto(){
+      state.autoOn = false;
+      if (state.autoTimer) clearInterval(state.autoTimer);
+      state.autoTimer = null;
+    }
+    function startAuto(){
+      stopAuto();
+      state.autoOn = true;
+      state.autoTimer = setInterval(() => nextBg(), 5000);
+    }
+
+    function setPointsVisible(v){
+      els.pointsLayer.style.display = v ? "block" : "none";
+    }
+
+    // ✅ 렌더: baseState + cam3Overlay 조합에 따라 이미지/버튼 표시
+    function renderCamera(){
+      if (state.isCam3Overlay){
+        els.cameraImg.src = RES.cam3;
+        setPointsVisible(false); // cam3에서는 버튼 숨김
+      } else {
+        els.cameraImg.src = (state.baseState === 1) ? RES.cam1 : RES.cam2;
+        setPointsVisible(true);
+      }
+    }
+
+    // ✅ camera 이미지 실제 비율로 stage aspect-ratio 보정
+    function syncStageAspectFromImage(){
+      const img = els.cameraImg;
+      if (!img.naturalWidth || !img.naturalHeight) return;
+      els.cameraStage.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+    }
+    els.cameraImg.addEventListener("load", syncStageAspectFromImage);
+
+    // ====== A: Info Toggle ======
+    els.infoImg.addEventListener("click", () => {
+      state.infoOn = !state.infoOn;
+      els.infoImg.src = state.infoOn ? RES.info2 : RES.info1;
+      showToast(state.infoOn ? "공성전 정보: ON" : "공성전 정보: OFF");
+    });
+
+    // ====== [요구] 빨간색(자동 토글): cam1 상태에서 누르면 auto ON + cam2 유지 / 다시 누르면 auto OFF + cam1 유지 ======
+    els.btnAutoToggle.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+
+      // cam3 오버레이 중에는 먼저 base 화면으로 복귀한 뒤 토글 적용
+      if (state.isCam3Overlay){
+        state.isCam3Overlay = false;
+      }
+
+      if (!state.autoOn){
+        // auto ON => cam2로 유지
+        state.baseState = 2;
+        startAuto();
+        showToast("자동: ON (5초)");
+      } else {
+        // auto OFF => cam1로 유지
+        stopAuto();
+        state.baseState = 1;
+        showToast("자동: OFF");
+      }
+
+      renderCamera();
+    });
+
+    // ====== [요구] 파란색(카메라 버튼): cam1/2 어디서든 cam3로 갔다가 다시 누르면 이전 상태로 복귀 ======
+    els.btnCameraIcon.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+
+      state.isCam3Overlay = !state.isCam3Overlay;
+      renderCamera();
+
+      if (state.isCam3Overlay){
+        showToast("카메라: 상세(3) ON");
+      } else {
+        showToast("카메라: 이전 상태로 복귀");
+      }
+    });
+
+    // ====== Points (cam1/2에서만) ======
+    function flashPoint(el){
+      el.classList.add("flash");
+      setTimeout(() => el.classList.remove("flash"), 240);
+    }
+
+    els.pointsLayer.addEventListener("click", (e) => {
+      const pt = e.target.closest(".pt");
+      if (!pt) return;
+      if (state.isCam3Overlay) return; // 안전장치
+
+      flashPoint(pt);
+
+      // 어떤 버튼을 클릭하든 배경 순차 전환
+      state.manualSeqIndex = (state.manualSeqIndex + 1) % RES.bg.length;
+      setBgByIndex(state.manualSeqIndex);
+    });
+
+    // ====== Init ======
+    setBgByIndex(0);
+    els.infoImg.src = RES.info1;
+    renderCamera();
+    syncStageAspectFromImage();
+  </script>
+</body>
+</html>
